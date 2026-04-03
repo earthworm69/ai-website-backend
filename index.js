@@ -11,6 +11,20 @@ const USERNAME = "admin";
 const PASSWORD = "yourpassword";
 const AUTH_TOKEN = "super-secret-dashboard-token-123";
 
+// Model Mappings
+const imageModelMap = {
+  "gemini-pro": "google/gemini-3-pro-image-preview",
+  "gemini-flash": "google/gemini-3.1-flash-image",
+  "qwen": "alibaba/qwen-image"
+};
+
+const videoModelMap = {
+  "veo": "google/veo-3-1-text-to-video",
+  "wan": "alibaba/wan-2.6-text-to-video",
+  "kling-standard": "kling/v3-standard/text-to-video",
+  "kling-pro": "kling/v3-pro/text-to-video"
+};
+
 // API Key Rotation Setup
 const API_KEYS = [
   process.env.AIML_API_KEY_1,
@@ -136,32 +150,45 @@ app.post('/login', (req, res) => {
  */
 app.post('/generate-image', authMiddleware, async (req, res) => {
   const { prompt, model } = req.body;
-  if (!prompt) return res.status(400).json({ error: 'Prompt is required.' });
 
-  const selectedModel = model || 'stable-diffusion-xl';
+  const selectedModel = imageModelMap[model];
+
+  if (!prompt || !selectedModel) {
+    console.error(`[IMAGE ERR] Invalid request: prompt="${prompt}", model="${model}"`);
+    return res.status(400).json({ error: "Invalid prompt or model name" });
+  }
 
   try {
-    console.log(`[IMAGE] Request: "${prompt}" | Model: "${selectedModel}"`);
+    console.log(`[IMAGE] MODEL: "${selectedModel}"`);
+    console.log(`[IMAGE] PROMPT: "${prompt}"`);
+
     const { response, data } = await fetchWithRetry(`${BASE_URL}/v1/images/generations`, {
       method: 'POST',
       body: JSON.stringify({
         model: selectedModel,
-        prompt: prompt,
-        n: 1,
-        size: '1024x1024'
+        prompt: prompt
       })
     });
 
     if (!response.ok) {
-      console.error('[IMAGE ERR] API returned:', JSON.stringify(data, null, 2));
-      return res.status(response.status).json({ 
-        error: data.error?.message || 'Failed to generate image', 
-        details: data 
+      console.error("IMAGE API ERROR:", JSON.stringify(data, null, 2));
+      return res.status(response.status).json({
+        error: data.error?.message || "Image generation failed",
+        details: data
       });
     }
 
-    res.json({ imageUrl: data.data?.[0]?.url });
+    // Extract image URL with multiple fallbacks
+    const imageUrl = data.data?.[0]?.url || data.output?.url || null;
+
+    if (!imageUrl) {
+      console.error("IMAGE ERR: No URL found in successful response", data);
+      return res.status(502).json({ error: "No image URL returned from API", details: data });
+    }
+
+    res.json({ imageUrl });
   } catch (error) {
+    console.error("IMAGE CRITICAL ERR:", error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -172,27 +199,38 @@ app.post('/generate-image', authMiddleware, async (req, res) => {
  */
 app.post('/generate-video', authMiddleware, async (req, res) => {
   const { prompt, model } = req.body;
-  if (!prompt) return res.status(400).json({ error: 'Prompt is required.' });
 
-  const selectedModel = model || 'kling-video/v1/standard/text-to-video';
+  const selectedModel = videoModelMap[model];
+
+  if (!prompt || !selectedModel) {
+    console.error(`[VIDEO ERR] Invalid request: prompt="${prompt}", model="${model}"`);
+    return res.status(400).json({ error: "Invalid prompt or model name" });
+  }
 
   try {
-    console.log(`[VIDEO] Request: "${prompt}" | Model: "${selectedModel}"`);
+    console.log(`[VIDEO] MODEL: "${selectedModel}"`);
+    console.log(`[VIDEO] PROMPT: "${prompt}"`);
+
     const { response, data } = await fetchWithRetry(`${BASE_URL}/v2/video/generations`, {
       method: 'POST',
-      body: JSON.stringify({ model: selectedModel, prompt })
+      body: JSON.stringify({
+        model: selectedModel,
+        prompt: prompt
+      })
     });
 
     if (!response.ok) {
-      console.error('[VIDEO ERR] API returned:', JSON.stringify(data, null, 2));
-      return res.status(response.status).json({ 
-        error: data.error?.message || 'Failed to start video generation', 
-        details: data 
+      console.error("VIDEO API ERROR:", JSON.stringify(data, null, 2));
+      return res.status(response.status).json({
+        error: data.error?.message || "Video generation failed",
+        details: data
       });
     }
 
+    // Return job_id (id) for status polling
     res.json({ job_id: data.id });
   } catch (error) {
+    console.error("VIDEO CRITICAL ERR:", error.message);
     res.status(500).json({ error: error.message });
   }
 });
