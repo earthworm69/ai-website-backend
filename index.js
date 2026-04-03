@@ -13,9 +13,9 @@ const AUTH_TOKEN = "super-secret-dashboard-token-123";
 
 // Model Mappings
 const imageModelMap = {
-  "gemini-pro": "google/gemini-3-pro-image-preview",
-  "gemini-flash": "google/gemini-3.1-flash-image",
-  "qwen": "alibaba/qwen-image"
+  "gemini-pro": "stable-diffusion-xl",
+  "gemini-flash": "stable-diffusion-xl",
+  "qwen": "stable-diffusion-xl"
 };
 
 const videoModelMap = {
@@ -151,15 +151,16 @@ app.post('/login', (req, res) => {
 app.post('/generate-image', authMiddleware, async (req, res) => {
   const { prompt, model } = req.body;
 
-  const selectedModel = imageModelMap[model];
+  // Use mapping or fallback to stable-diffusion-xl
+  const selectedModel = imageModelMap[model] || "stable-diffusion-xl";
 
-  if (!prompt || !selectedModel) {
-    console.error(`[IMAGE ERR] Invalid request: prompt="${prompt}", model="${model}"`);
-    return res.status(400).json({ error: "Invalid prompt or model name" });
+  if (!prompt) {
+    console.error(`[IMAGE ERR] Invalid request: prompt is missing`);
+    return res.status(400).json({ error: "Prompt is required" });
   }
 
   try {
-    console.log(`[IMAGE] MODEL: "${selectedModel}"`);
+    console.log(`[IMAGE] SELECTED MODEL: "${selectedModel}" (Requested: "${model}")`);
     console.log(`[IMAGE] PROMPT: "${prompt}"`);
 
     const { response, data } = await fetchWithRetry(`${BASE_URL}/v1/images/generations`, {
